@@ -4,6 +4,8 @@ services:
     command: sleep infinity
     volumes:
       - .:/workspace:cached
+    environment:
+      DJANGO_DEBUG: "1"
     env_file:
       - path: .env
         required: false

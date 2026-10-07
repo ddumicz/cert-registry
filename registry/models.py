@@ -15,12 +15,11 @@ CRITICAL_DAYS = 7
 class ICTSystem(models.Model):
     class Criticality(models.TextChoices):
         CRITICAL = "critical", "Krytyczna funkcja"
-        IMPORTANT = "important", "Ważna funkcja"
         STANDARD = "standard", "Standardowa"
 
     name = models.CharField("nazwa", max_length=200, unique=True)
-    cmdb_id = models.CharField(
-        "CMDB_ID", max_length=128, unique=True, null=True, blank=True,
+    cmdb_snsi = models.CharField(
+        "CMDB_SNSI", max_length=10, unique=True, null=True, blank=True,
         help_text="Stabilny identyfikator systemu w zewnętrznej CMDB.",
     )
     description = models.TextField("opis", blank=True)
@@ -43,8 +42,9 @@ class ICTSystem(models.Model):
 
 
 class CMDBIPMapping(models.Model):
+    name = models.CharField("nazwa", max_length=200, blank=True)
     address = models.GenericIPAddressField("adres IP")
-    cmdb_ci_id = models.CharField("ID CI zasobu", max_length=128)
+    cmdb_ci_id = models.CharField("ID Zasobu", max_length=128)
     ict_system = models.ForeignKey(
         ICTSystem, verbose_name="system ICT", null=True, blank=True,
         on_delete=models.PROTECT, related_name="cmdb_ip_mappings",
@@ -63,7 +63,8 @@ class CMDBIPMapping(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.address} — {self.cmdb_ci_id}"
+        asset = f"{self.name} — " if self.name else ""
+        return f"{asset}{self.address} — {self.cmdb_ci_id}"
 
 
 class Certificate(models.Model):

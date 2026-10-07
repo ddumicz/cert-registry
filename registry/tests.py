@@ -224,6 +224,9 @@ class CertificateInstallationTests(TestCase):
     def test_cmdb_asset_labels(self):
         self.assertEqual(CMDBIPMapping._meta.verbose_name, "zasób CMDB")
         self.assertEqual(CMDBIPMapping._meta.verbose_name_plural, "zasoby CMDB")
+        self.assertEqual(CMDBIPMapping._meta.get_field("name").verbose_name, "nazwa")
+        self.assertTrue(CMDBIPMapping._meta.get_field("name").blank)
+        self.assertEqual(CMDBIPMapping._meta.get_field("cmdb_ci_id").verbose_name, "ID Zasobu")
         self.assertEqual(
             CertificateInstallation._meta.get_field("cmdb_mapping").verbose_name,
             "powiązanie z zasobem CMDB (IP)",
@@ -351,7 +354,7 @@ class CertificateInstallationTests(TestCase):
             RequestFactory().post("/registry/certificate/"),
             Certificate.objects.filter(pk=self.certificate.pk),
         )
-        self.assertIn("CMDB CI: CI-1042", response.content.decode())
+        self.assertIn("ID Zasobu: CI-1042", response.content.decode())
 
     def test_registry_groups_have_installation_permissions(self):
         from django.contrib.auth.models import Group
@@ -390,19 +393,23 @@ class CMDBImportTests(TestCase):
 
     def test_import_creates_system_and_allows_ambiguous_ip(self):
         out, err, error = self._run_import(
-            "ip,cmdb_ci_id,ict_system\n"
-            "192.0.2.10,CI-1,Payments\n"
-            "192.0.2.10,CI-2,Reporting\n"
+            "ip,cmdb_ci_id,cmdb_name,ict_system\n"
+            "192.0.2.10,CI-1,Payments DB,Payments\n"
+            "192.0.2.10,CI-2,Reports DB,Reporting\n"
         )
         self.assertIsNone(error)
         self.assertIn("2 dodano", out)
         self.assertEqual(err, "")
         self.assertEqual(CMDBIPMapping.objects.filter(address="192.0.2.10").count(), 2)
         self.assertEqual(ICTSystem.objects.count(), 2)
+        self.assertEqual(
+            CMDBIPMapping.objects.get(cmdb_ci_id="CI-1").name,
+            "Payments DB",
+        )
 
-    def test_import_links_assets_to_system_by_cmdb_id(self):
+    def test_import_links_assets_to_system_by_cmdb_snsi(self):
         out, err, error = self._run_import(
-            "ip,cmdb_ci_id,ict_system,ict_system_cmdb_id\n"
+            "ip,cmdb_ci_id,ict_system,ict_system_cmdb_snsi\n"
             "192.0.2.10,CI-1,Payments,SYS-100\n"
             "192.0.2.11,CI-2,Payments,SYS-100\n"
         )
@@ -410,25 +417,35 @@ class CMDBImportTests(TestCase):
         self.assertEqual(err, "")
         self.assertIn("2 dodano", out)
 
-        system = ICTSystem.objects.get(cmdb_id="SYS-100")
+        system = ICTSystem.objects.get(cmdb_snsi="SYS-100")
         mappings = CMDBIPMapping.objects.filter(ict_system=system)
         self.assertEqual(system.name, "Payments")
         self.assertEqual(mappings.count(), 2)
         self.assertEqual(ICTSystem.objects.count(), 1)
 
-    def test_import_adds_cmdb_id_to_an_existing_system_by_name(self):
+    def test_import_adds_cmdb_snsi_to_an_existing_system_by_name(self):
         system = ICTSystem.objects.create(name="Payments")
         out, _, error = self._run_import(
-            "ip,cmdb_ci_id,ict_system,ict_system_cmdb_id\n"
+            "ip,cmdb_ci_id,ict_system,ict_system_cmdb_snsi\n"
             "192.0.2.10,CI-1,Payments,SYS-100\n"
         )
         self.assertIsNone(error)
         self.assertIn("1 dodano", out)
 
         system.refresh_from_db()
-        self.assertEqual(system.cmdb_id, "SYS-100")
+        self.assertEqual(system.cmdb_snsi, "SYS-100")
         self.assertEqual(CMDBIPMapping.objects.get().ict_system, system)
         self.assertEqual(ICTSystem.objects.count(), 1)
+
+    def test_import_rejects_cmdb_snsi_longer_than_10_characters(self):
+        out, err, error = self._run_import(
+            "ip,cmdb_ci_id,ict_system,ict_system_cmdb_snsi\n"
+            "192.0.2.10,CI-1,Payments,TOO-LONG-VALUE\n"
+        )
+        self.assertIsInstance(error, CommandError)
+        self.assertIn("przekracza 10 znaków", err)
+        self.assertEqual(CMDBIPMapping.objects.count(), 0)
+        self.assertEqual(ICTSystem.objects.count(), 0)
 
     def test_import_dry_run_does_not_save(self):
         out, _, error = self._run_import(
@@ -446,9 +463,9 @@ class CMDBImportTests(TestCase):
             cmdb_ci_id="CI-1",
         )
         out, err, error = self._run_import(
-            "ip;cmdb_ci_id;ict_system\n"
-            "192.0.2.10;CI-1;Payments\n"
-            "not-an-ip;CI-2;Payments\n"
+            "ip;cmdb_ci_id;cmdb_name;ict_system\n"
+            "192.0.2.10;CI-1;Payments database;Payments\n"
+            "not-an-ip;CI-2;Reporting database;Payments\n"
         )
         self.assertIsInstance(error, CommandError)
         self.assertIn("1 zaktualizowano", out)
@@ -458,6 +475,7 @@ class CMDBImportTests(TestCase):
             CMDBIPMapping.objects.get(cmdb_ci_id="CI-1").ict_system.name,
             "Payments",
         )
+        self.assertEqual(CMDBIPMapping.objects.get(cmdb_ci_id="CI-1").name, "Payments database")
 
 
 class TenableSyncTests(TestCase):
@@ -784,3 +802,33 @@ class CMDBDataMigrationTests(TransactionTestCase):
         historical = HistoricalInstallation.objects.get(address="192.0.2.99")
         self.assertEqual(historical.cmdb_mapping.cmdb_ci_id, "CI-LEGACY-99")
         self.assertEqual(historical.ict_system_id, installation.ict_system_id)
+
+
+class ICTSystemCriticalityMigrationTests(TransactionTestCase):
+    migrate_from = ("registry", "0017_rename_ict_system_cmdb_id_to_snsi")
+    migrate_to = ("registry", "0018_alter_historicalictsystem_criticality_and_more")
+
+    def setUp(self):
+        super().setUp()
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_from])
+        old_apps = executor.loader.project_state([self.migrate_from]).apps
+        ICTSystemBefore = old_apps.get_model("registry", "ICTSystem")
+        self.system_id = ICTSystemBefore.objects.create(
+            name="Important system",
+            criticality="important",
+        ).pk
+
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_to])
+        self.apps = executor.loader.project_state([self.migrate_to]).apps
+
+    def tearDown(self):
+        MigrationExecutor(connection).migrate([self.migrate_to])
+        super().tearDown()
+
+    def test_important_systems_become_standard_and_choice_is_removed(self):
+        ICTSystem = self.apps.get_model("registry", "ICTSystem")
+        system = ICTSystem.objects.get(pk=self.system_id)
+        self.assertEqual(system.criticality, "standard")
+        self.assertNotIn("important", dict(ICTSystem._meta.get_field("criticality").choices))

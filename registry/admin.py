@@ -77,16 +77,16 @@ class CertificateForm(forms.ModelForm):
 
 @admin.register(ICTSystem)
 class ICTSystemAdmin(SimpleHistoryAdmin):
-    list_display = ("name", "cmdb_id", "criticality", "owner")
+    list_display = ("name", "cmdb_snsi", "criticality", "owner")
     list_filter = ("criticality",)
-    search_fields = ("name", "cmdb_id", "description")
+    search_fields = ("name", "cmdb_snsi", "description")
 
 
 @admin.register(CMDBIPMapping)
 class CMDBIPMappingAdmin(SimpleHistoryAdmin):
-    list_display = ("address", "cmdb_ci_id", "ict_system")
+    list_display = ("name", "address", "cmdb_ci_id", "ict_system")
     list_filter = ("ict_system",)
-    search_fields = ("address", "cmdb_ci_id", "ict_system__name")
+    search_fields = ("name", "address", "cmdb_ci_id", "ict_system__name")
     autocomplete_fields = ("ict_system",)
 
 
@@ -193,7 +193,7 @@ class CertificateAdmin(SimpleHistoryAdmin):
                             if installation.ict_system_id else ""
                         )
                         + (
-                            f" [CMDB CI: {installation.cmdb_mapping.cmdb_ci_id}]"
+                            f" [ID Zasobu: {installation.cmdb_mapping.cmdb_ci_id}]"
                             if installation.cmdb_mapping_id else ""
                         )
                         + (
