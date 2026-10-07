@@ -25,17 +25,22 @@ class Command(BaseCommand):
             "created": 0,
             "updated": 0,
             "installations": 0,
+            "deactivated": 0,
             "unmapped": 0,
             "ambiguous": 0,
             "skipped": 0,
         }
+        seen_installation_ids = set()
         with transaction.atomic():
             for index, finding in enumerate(findings, start=1):
                 try:
                     parsed = parse_finding(finding)
                     with transaction.atomic():
                         certificate, created = self._upsert_certificate(parsed)
-                        warnings, mapping_status = self._upsert_installations(certificate, parsed)
+                        warnings, mapping_status, installation_ids = self._upsert_installations(
+                            certificate, parsed
+                        )
+                        seen_installation_ids.update(installation_ids)
                 except (TenableDataError, ValidationError, ValueError) as exc:
                     counts["skipped"] += 1
                     self.stderr.write(f"Wynik {index}: pominięto — {exc}")
@@ -50,6 +55,25 @@ class Command(BaseCommand):
                 if index % 100 == 0:
                     self.stdout.write(f"Przetworzono {index} z {len(findings)} wyników.")
 
+            if findings and not counts["skipped"]:
+                stale_installations = CertificateInstallation.objects.filter(
+                    source=CertificateInstallation.Source.TENABLE,
+                    is_active=True,
+                ).exclude(pk__in=seen_installation_ids)
+                for installation in stale_installations.iterator():
+                    installation.is_active = False
+                    installation.save(update_fields=("is_active",))
+                    counts["deactivated"] += 1
+            elif not findings:
+                self.stderr.write(
+                    "Brak wyników Tenable; dezaktywowanie lokalizacji pominięto dla bezpieczeństwa."
+                )
+            elif counts["skipped"]:
+                self.stderr.write(
+                    "Pominięto dezaktywowanie lokalizacji, ponieważ synchronizacja zawiera "
+                    "nieprawidłowe wyniki."
+                )
+
             if dry_run:
                 transaction.set_rollback(True)
 
@@ -59,6 +83,7 @@ class Command(BaseCommand):
             f"{counts['created']} nowych certyfikatów, "
             f"{counts['updated']} zaktualizowanych, "
             f"{counts['installations']} lokalizacji, "
+            f"{counts['deactivated']} dezaktywowanych, "
             f"{counts['unmapped']} bez mapowania IP, "
             f"{counts['ambiguous']} niejednoznacznych IP, "
             f"{counts['skipped']} pominiętych."
@@ -127,6 +152,7 @@ class Command(BaseCommand):
         if not ip_address:
             mapping_status = "unmapped"
 
+        installation_ids = set()
         for address_type, address in parsed["addresses"]:
             installation, _ = CertificateInstallation.objects.get_or_create(
                 certificate=certificate,
@@ -142,17 +168,21 @@ class Command(BaseCommand):
                     "last_seen": parsed["last_seen"],
                 },
             )
+            installation_ids.add(installation.pk)
             if installation.pk:
                 changed_fields = []
                 values = {
                     "ict_system": mapping.ict_system if mapping else None,
                     "cmdb_mapping": mapping if address_type == "ip" else None,
+                    "is_active": True,
                 }
                 if parsed["last_seen"] is not None:
                     values["last_seen"] = parsed["last_seen"]
                 for field, value in values.items():
                     if field == "last_seen":
                         changed = installation.last_seen != value
+                    elif field == "is_active":
+                        changed = installation.is_active != value
                     else:
                         changed = getattr(installation, f"{field}_id") != getattr(value, "pk", None)
                     if changed:
@@ -160,4 +190,4 @@ class Command(BaseCommand):
                         changed_fields.append(field)
                 if changed_fields:
                     installation.save(update_fields=changed_fields)
-        return warnings, mapping_status
+        return warnings, mapping_status, installation_ids

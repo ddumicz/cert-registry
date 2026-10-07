@@ -189,6 +189,7 @@ class CertificateInstallation(models.Model):
     protocol = models.CharField("protokół", max_length=32, blank=True)
     repository = models.CharField("repozytorium Tenable", max_length=128, blank=True)
     last_seen = models.DateTimeField("ostatnio widziano", null=True, blank=True)
+    is_active = models.BooleanField("aktywna", default=True)
     history = HistoricalRecords()
 
     class Meta:

@@ -107,7 +107,7 @@ class CertificateInstallationInline(admin.TabularInline):
     autocomplete_fields = ("ict_system", "cmdb_mapping")
     fields = (
         "address_type", "address", "ict_system", "cmdb_mapping",
-        "source", "port", "protocol", "repository", "last_seen",
+        "source", "port", "protocol", "repository", "last_seen", "is_active",
     )
 
     class Media:
@@ -116,8 +116,11 @@ class CertificateInstallationInline(admin.TabularInline):
 
 @admin.register(CertificateInstallation)
 class CertificateInstallationAdmin(SimpleHistoryAdmin):
-    list_display = ("certificate", "ict_system", "address_type", "address", "source", "port", "last_seen")
-    list_filter = ("address_type", "source", "ict_system")
+    list_display = (
+        "certificate", "ict_system", "address_type", "address", "source", "port", "last_seen",
+        "is_active",
+    )
+    list_filter = ("address_type", "source", "ict_system", "is_active")
     search_fields = (
         "address", "certificate__name", "certificate__common_name", "cmdb_mapping__cmdb_ci_id",
     )
@@ -198,6 +201,7 @@ class CertificateAdmin(SimpleHistoryAdmin):
                             if installation.protocol else ""
                         )
                         + (f" [Tenable: {installation.repository}]" if installation.repository else "")
+                        + (" [nieaktywna]" if not installation.is_active else "")
                         for installation in c.installations.all()
                     )
                 else:

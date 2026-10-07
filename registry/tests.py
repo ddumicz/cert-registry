@@ -492,7 +492,9 @@ class TenableSyncTests(TestCase):
         self.assertEqual(certificate.fingerprint_sha256, self.parsed_pem["fingerprint_sha256"])
         self.assertIsNone(certificate.ict_system)
         ip_installation = certificate.installations.get(address_type="ip")
-        dns_installation = certificate.installations.get(address_type="dns")
+        dns_installation = certificate.installations.get(
+            address_type="dns", source=CertificateInstallation.Source.TENABLE
+        )
         self.assertEqual(ip_installation.ict_system, system)
         self.assertEqual(ip_installation.cmdb_mapping, mapping)
         self.assertEqual(dns_installation.ict_system, system)
@@ -519,6 +521,57 @@ class TenableSyncTests(TestCase):
         self.assertEqual(certificate.status, Certificate.Status.REVOKED)
         self.assertEqual(certificate.notes, "Keep this note")
         self.assertEqual(certificate.installations.count(), 2)
+
+    @patch("registry.management.commands.sync_tenable_certificates.fetch_certificates")
+    def test_sync_deactivates_missing_tenable_installations_and_reactivates_returning_ones(self, fetch):
+        fetch.return_value = [self.finding]
+        call_command("sync_tenable_certificates", stdout=StringIO())
+        certificate = Certificate.objects.get()
+        manual_installation = CertificateInstallation.objects.create(
+            certificate=certificate,
+            address_type=CertificateInstallation.AddressType.DNS,
+            address="manual.example.test",
+            source=CertificateInstallation.Source.MANUAL,
+        )
+
+        dns_finding = {**self.finding, "ip": ""}
+        fetch.return_value = [dns_finding]
+        out = StringIO()
+        call_command("sync_tenable_certificates", stdout=out)
+
+        ip_installation = certificate.installations.get(
+            address_type="ip", source=CertificateInstallation.Source.TENABLE
+        )
+        dns_installation = certificate.installations.get(
+            address_type="dns", source=CertificateInstallation.Source.TENABLE
+        )
+        self.assertFalse(ip_installation.is_active)
+        self.assertTrue(dns_installation.is_active)
+        manual_installation.refresh_from_db()
+        self.assertTrue(manual_installation.is_active)
+        self.assertIn("1 dezaktywowanych", out.getvalue())
+
+        fetch.return_value = [self.finding]
+        call_command("sync_tenable_certificates", stdout=StringIO())
+        ip_installation.refresh_from_db()
+        self.assertTrue(ip_installation.is_active)
+
+    @patch("registry.management.commands.sync_tenable_certificates.fetch_certificates")
+    def test_sync_does_not_deactivate_on_empty_or_incomplete_results(self, fetch):
+        fetch.return_value = [self.finding]
+        call_command("sync_tenable_certificates", stdout=StringIO())
+        installation = CertificateInstallation.objects.get(address_type="ip")
+
+        fetch.return_value = []
+        call_command("sync_tenable_certificates", stdout=StringIO(), stderr=StringIO())
+        installation.refresh_from_db()
+        self.assertTrue(installation.is_active)
+
+        fetch.return_value = [{"ip": "192.0.2.30", "pluginOutput": "missing certificate"}]
+        with self.assertRaises(CommandError):
+            call_command("sync_tenable_certificates", stdout=StringIO(), stderr=StringIO())
+        installation.refresh_from_db()
+        self.assertTrue(installation.is_active)
 
     @patch("registry.management.commands.sync_tenable_certificates.fetch_certificates")
     def test_sync_leaves_system_unset_for_unmatched_or_ambiguous_ip(self, fetch):
