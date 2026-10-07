@@ -1,0 +1,99 @@
+:root,
+html[data-theme="light"] {
+    --primary: #d71920;
+    --secondary: #a70f17;
+    --accent: #d71920;
+    --primary-fg: #fff;
+
+    --header-bg: #d71920;
+    --header-color: #fff;
+    --header-branding-color: #fff;
+    --header-link-color: #fff;
+    --breadcrumbs-bg: #a70f17;
+    --breadcrumbs-fg: #fff;
+    --breadcrumbs-link-fg: #fff;
+
+    --link-fg: #a70f17;
+    --link-hover-color: #780b12;
+    --link-selected-fg: #a70f17;
+
+    --selected-row: #fdebed;
+    --button-bg: #d71920;
+    --button-hover-bg: #a70f17;
+    --default-button-bg: #a70f17;
+    --default-button-hover-bg: #780b12;
+}
+
+html[data-theme="dark"] {
+    --primary: #d71920;
+    --secondary: #a70f17;
+    --accent: #ff858a;
+    --primary-fg: #fff;
+
+    --body-fg: #eee;
+    --body-bg: #161616;
+    --body-quiet-color: #c8c8c8;
+    --body-medium-color: #ddd;
+    --body-loud-color: #fff;
+
+    --header-bg: #a70f17;
+    --header-color: #fff;
+    --header-branding-color: #fff;
+    --header-link-color: #fff;
+    --breadcrumbs-bg: #780b12;
+    --breadcrumbs-fg: #fff;
+    --breadcrumbs-link-fg: #fff;
+
+    --link-fg: #ff858a;
+    --link-hover-color: #ffb3b6;
+    --link-selected-fg: #ff858a;
+
+    --darkened-bg: #242020;
+    --selected-bg: #302022;
+    --selected-row: #3a2023;
+    --button-bg: #d71920;
+    --button-hover-bg: #a70f17;
+    --default-button-bg: #a70f17;
+    --default-button-hover-bg: #780b12;
+}
+
+#site-name a:link,
+#site-name a:visited,
+#branding h2 {
+    color: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+    html[data-theme="auto"] {
+        --primary: #d71920;
+        --secondary: #a70f17;
+        --accent: #ff858a;
+        --primary-fg: #fff;
+
+        --body-fg: #eee;
+        --body-bg: #161616;
+        --body-quiet-color: #c8c8c8;
+        --body-medium-color: #ddd;
+        --body-loud-color: #fff;
+
+        --header-bg: #a70f17;
+        --header-color: #fff;
+        --header-branding-color: #fff;
+        --header-link-color: #fff;
+        --breadcrumbs-bg: #780b12;
+        --breadcrumbs-fg: #fff;
+        --breadcrumbs-link-fg: #fff;
+
+        --link-fg: #ff858a;
+        --link-hover-color: #ffb3b6;
+        --link-selected-fg: #ff858a;
+
+        --darkened-bg: #242020;
+        --selected-bg: #302022;
+        --selected-row: #3a2023;
+        --button-bg: #d71920;
+        --button-hover-bg: #a70f17;
+        --default-button-bg: #a70f17;
+        --default-button-hover-bg: #780b12;
+    }
+}
